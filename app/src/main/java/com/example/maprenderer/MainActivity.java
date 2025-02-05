@@ -14,10 +14,12 @@ import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 
 public class MainActivity extends AppCompatActivity {
-    private GLSurfaceView glSurfaceView;
+    public GLSurfaceView glSurfaceView;
     private MapRenderer mapRenderer;
     boolean network;
     double netSpeed;
+    float lastTouchX = 0;
+    float lastTouchY = 0;
     Runnable onPermissionGrantedCallback;
 
     @Override
@@ -26,7 +28,7 @@ public class MainActivity extends AppCompatActivity {
         checkPermission(() -> {
             initNetwork(this);
             glSurfaceView = new GLSurfaceView(this);
-            glSurfaceView.setEGLContextClientVersion(2); // OpenGL ES 3.2
+            glSurfaceView.setEGLContextClientVersion(2);
             mapRenderer = new MapRenderer(this);
             glSurfaceView.setRenderer(mapRenderer);
             setContentView(glSurfaceView);
@@ -49,13 +51,23 @@ public class MainActivity extends AppCompatActivity {
         float deltaX;
         float deltaY;
 
-        if (event.getAction() == MotionEvent.ACTION_MOVE) {// Získání změn v pozici prstu
-            deltaX = event.getX() - event.getHistoricalX(0);
-            deltaY = event.getY() - event.getHistoricalY(0);
+        if (event.getAction() == MotionEvent.ACTION_MOVE) {
+            if (event.getHistorySize() > 0) {
+                deltaX = event.getX() - event.getHistoricalX(0);
+                deltaY = event.getY() - event.getHistoricalY(0);
+            } else {
+                // Pokud nejsou historická data, použij jen aktuální změnu
+                deltaX = event.getX() - lastTouchX;
+                deltaY = event.getY() - lastTouchY;
+            }
 
             // Předání změn do rendereru pro posunutí mapy
             mapRenderer.handleTouchMove(deltaX / glSurfaceView.getWidth(), deltaY / glSurfaceView.getHeight());
         }
+
+        // Uložení poslední pozice pro další snímek
+        lastTouchX = event.getX();
+        lastTouchY = event.getY();
 
         return true;
     }

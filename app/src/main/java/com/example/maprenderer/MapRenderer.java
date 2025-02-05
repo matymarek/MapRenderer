@@ -31,17 +31,23 @@ public class MapRenderer implements GLSurfaceView.Renderer {
     private final float[] mProjectionMatrix = new float[16];
     private final float[] mModelMatrix = new float[16];
     private ShortBuffer indexBuffer;
-    private int tilesX = 3, tilesY = 3;
+    private int tilesX = 4, tilesY = 4;
     private int shaderProgram;
     FloatBuffer vertexBuffer, texCoordBuffer;
     private int positionHandle, textCoordHandle, mvpMatrixHandle;
     private final Map<String, Integer> tileTextures = new HashMap<>();
     private int vboId, txoId;
-    private int width, height;
+    private int surfaceWidth, surfaceHeight;
+    private static final float SMOOTHING_FACTOR = 0.15f;
+    private static final float MAX_OFFSET = TILE_SIZE * 1.5f;
+
+    private long lastTime = System.nanoTime();
+    private int frameCount = 0;
     public MapRenderer(Context context) {
         this.tileLoader = new TileLoader(context);
         this.position = new Position(context);
         this.context = context;
+
     }
     @Override
     public void onSurfaceCreated(GL10 gl, EGLConfig config) {
@@ -83,83 +89,82 @@ public class MapRenderer implements GLSurfaceView.Renderer {
         GLES20.glEnableVertexAttribArray(textCoordHandle);
         drawTileGrid();
         GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0);
+        long currentTime = System.nanoTime();
+        frameCount++;
+
+        if (currentTime - lastTime >= 1_000_000_000) { // 1 sekunda uplynula
+            Log.e("FPS", "FPS: " + frameCount);
+            frameCount = 0;
+            lastTime = currentTime;
+        }
     }
     @Override
     public void onSurfaceChanged(GL10 gl, int width, int height) {
         GLES20.glViewport(0, 0, width, height);
-
+        this.surfaceHeight = height;
+        this.surfaceWidth = width;
         float aspectRatio = (float) width / height;
-
-        // ✅ Zajistíme, že viewport přesně odpovídá dlaždicím
         float worldWidth = tilesX * TILE_SIZE;
         float worldHeight = tilesY * TILE_SIZE;
-
         if (width > height) {
-            // Širší obrazovka → výška se přizpůsobí
             Matrix.orthoM(mProjectionMatrix, 0, -worldWidth / 2, worldWidth / 2,
                     -worldWidth / (2 * aspectRatio), worldWidth / (2 * aspectRatio), -1, 1);
         } else {
-            // Vyšší obrazovka → šířka se přizpůsobí
             Matrix.orthoM(mProjectionMatrix, 0, -worldHeight * aspectRatio / 2, worldHeight * aspectRatio / 2,
                     -worldHeight / 2, worldHeight / 2, -1, 1);
         }
     }
-
     private void drawTileGrid() {
-        for (int x = -3; x < tilesX - 1; x++) {
-            for (int y = -3; y < tilesY - 1; y++) {
+        for (int x = -4; x < tilesX + 4; x++) {
+            for (int y = -4; y < tilesY + 4; y++) {
+                int tileX = position.x + x - (int) Math.floor(offsetX / TILE_SIZE);
+                int tileY = position.y + y - (int) Math.floor(offsetY / TILE_SIZE);
+                preloadTileTexture(position.z, tileX, tileY);
                 drawTile(x, y);
             }
         }
     }
     private void drawTile(int x, int y) {
-        int tileX = x + position.x;
-        int tileY = y + position.y;
+        int tileX = position.x + x - (int) Math.floor(offsetX / TILE_SIZE);
+        int tileY = position.y + y - (int) Math.floor(offsetY / TILE_SIZE);
         int zoom = position.z;
-
         String key = zoom + "_" + tileX + "_" + tileY;
-        int textureId;
-
-        if (tileTextures.containsKey(key)) {
-            textureId = tileTextures.get(key);
-        } else {
-            Bitmap tileBitmap = tileLoader.getTile(zoom, tileX, tileY);
-            if (tileBitmap != null) {
-                textureId = loadTexture(tileBitmap);
-                tileTextures.put(key, textureId);
-            } else {
-                return;
-            }
-        }
+        int textureId = tileTextures.getOrDefault(key, -1);
+        if (textureId == -1) { return; }
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, textureId);
-
-        Matrix.setIdentityM(mModelMatrix, 0);
-        Matrix.translateM(mModelMatrix, 0, x * TILE_SIZE, -y * TILE_SIZE, 0.0f);
-        Matrix.scaleM(mModelMatrix, 0, TILE_SIZE, TILE_SIZE, 1);
-
+        float tileScreenX = (x * TILE_SIZE) - offsetX;
+        float tileScreenY = (-y * TILE_SIZE) + offsetY;
+        float[] tileModelMatrix = new float[16];
+        Matrix.setIdentityM(tileModelMatrix, 0);
+        Matrix.translateM(tileModelMatrix, 0, tileScreenX, tileScreenY, 0);
+        Matrix.scaleM(tileModelMatrix, 0, TILE_SIZE, TILE_SIZE, 1);
         float[] mvpMatrix = new float[16];
-        Matrix.multiplyMM(mvpMatrix, 0, mProjectionMatrix, 0, mModelMatrix, 0);
+        Matrix.multiplyMM(mvpMatrix, 0, mProjectionMatrix, 0, tileModelMatrix, 0);
         GLES20.glUniformMatrix4fv(mvpMatrixHandle, 1, false, mvpMatrix, 0);
-
         GLES20.glDrawElements(GLES20.GL_TRIANGLES, 6, GLES20.GL_UNSIGNED_SHORT, indexBuffer);
+    }
+
+    private void preloadTileTexture(int zoom, int tileX, int tileY) {
+        String key = zoom + "_" + tileX + "_" + tileY;
+        if (tileTextures.containsKey(key)) return;
+        Bitmap tileBitmap = tileLoader.getTile(zoom, tileX, tileY);
+        if (tileBitmap != null) {
+            int textureId = loadTexture(tileBitmap);
+            tileTextures.put(key, textureId);
+        }
     }
     private int loadTexture(Bitmap bitmap) {
         final int[] textureHandle = new int[1];
         GLES20.glGenTextures(1, textureHandle, 0);
         if (textureHandle[0] == 0) {
-            throw new RuntimeException("Nepodařilo se vytvořit texturu!");
+            Log.e("OpenGL", "❌ Nepodařilo se vytvořit texturu!");
+            return -1;
         }
-
-        if (textureHandle[0] != 0) {
-            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, textureHandle[0]);
-            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR);
-            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR);
-            GLUtils.texImage2D(GLES20.GL_TEXTURE_2D, 0, bitmap, 0);
-            bitmap.recycle();
-        } else {
-            throw new RuntimeException("Nepodařilo se vytvořit texturu.");
-        }
-
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, textureHandle[0]);
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR);
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR);
+        GLUtils.texImage2D(GLES20.GL_TEXTURE_2D, 0, bitmap, 0);
+        bitmap.recycle();
         return textureHandle[0];
     }
     private void generateBuffers() {
@@ -232,8 +237,24 @@ public class MapRenderer implements GLSurfaceView.Renderer {
         return shaderProgram;
     }
     public void handleTouchMove(float deltaX, float deltaY) {
-        offsetX += deltaX;
-        offsetY += deltaY;
+        offsetX -= lerp(offsetX, offsetX - deltaX * 2 * TILE_SIZE, SMOOTHING_FACTOR);
+        offsetY += lerp(offsetY, offsetY - deltaY * 2 * TILE_SIZE, SMOOTHING_FACTOR);
+        offsetX = Math.max(-MAX_OFFSET, Math.min(MAX_OFFSET, offsetX));
+        offsetY = Math.max(-MAX_OFFSET, Math.min(MAX_OFFSET, offsetY));
+
+        if (Math.abs(offsetX) >= TILE_SIZE) {
+            position.x += (int) Math.signum(offsetX);
+            offsetX -= Math.signum(offsetX) * TILE_SIZE;
+        }
+        if (Math.abs(offsetY) >= TILE_SIZE) {
+            position.y += (int) Math.signum(offsetY);
+            offsetY -= Math.signum(offsetY) * TILE_SIZE;
+        }
+
+        //Log.e("Touch", "✅ Posun: offsetX=" + offsetX + " offsetY=" + offsetY + " Position: x=" + position.x + " y=" + position.y);
+    }
+    private static float lerp(float start, float end, float alpha) {
+        return start + alpha * (end - start);
     }
 
 }
