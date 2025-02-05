@@ -2,7 +2,7 @@ package com.example.maprenderer;
 
 import android.content.Context;
 import android.graphics.Bitmap;
-import android.opengl.GLES32;
+import android.opengl.GLES20;
 import android.opengl.GLSurfaceView;
 import android.opengl.GLUtils;
 import android.opengl.Matrix;
@@ -31,84 +31,90 @@ public class MapRenderer implements GLSurfaceView.Renderer {
     private final float[] mProjectionMatrix = new float[16];
     private final float[] mModelMatrix = new float[16];
     private ShortBuffer indexBuffer;
-    private int tilesX, tilesY;
+    private int tilesX = 3, tilesY = 3;
     private int shaderProgram;
     FloatBuffer vertexBuffer, texCoordBuffer;
     private int positionHandle, textCoordHandle, mvpMatrixHandle;
     private final Map<String, Integer> tileTextures = new HashMap<>();
-    private int vboId;
+    private int vboId, txoId;
+    private int width, height;
     public MapRenderer(Context context) {
         this.tileLoader = new TileLoader(context);
         this.position = new Position(context);
         this.context = context;
     }
-
     @Override
     public void onSurfaceCreated(GL10 gl, EGLConfig config) {
-        GLES32.glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-        GLES32.glActiveTexture(GLES32.GL_TEXTURE0);
-        GLES32.glEnable(GLES32.GL_DEPTH_TEST);
-        GLES32.glClearDepthf(1.0f);
-        GLES32.glEnable(GLES32.GL_TEXTURE_2D);
+        GLES20.glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+        GLES20.glEnable(GLES20.GL_DEPTH_TEST);
+        GLES20.glClearDepthf(1.0f);
         Matrix.setIdentityM(mProjectionMatrix, 0);
         Matrix.setIdentityM(mModelMatrix, 0);
         shaderProgram = createShaderProgram();
-        GLES32.glUseProgram(shaderProgram);
-        positionHandle = GLES32.glGetAttribLocation(shaderProgram, "a_Position");
-        textCoordHandle = GLES32.glGetAttribLocation(shaderProgram, "a_TexCoord");
-        mvpMatrixHandle = GLES32.glGetUniformLocation(shaderProgram, "u_MVPMatrix");
-        GLES32.glEnableVertexAttribArray(positionHandle);
-        GLES32.glEnableVertexAttribArray(textCoordHandle);
-        position.getNetPosition();
+        GLES20.glUseProgram(shaderProgram);
+        textCoordHandle = GLES20.glGetAttribLocation(shaderProgram, "a_TexCoord");
+        mvpMatrixHandle = GLES20.glGetUniformLocation(shaderProgram, "u_MVPMatrix");
+        positionHandle = GLES20.glGetAttribLocation(shaderProgram, "a_Position");
+        GLES20.glEnableVertexAttribArray(positionHandle);
+        GLES20.glEnableVertexAttribArray(textCoordHandle);
         generateBuffers();
-        int[] vboHandles = new int[1];
-        GLES32.glGenBuffers(1, vboHandles, 0);
+        int[] vboHandles = new int[2];
+        GLES20.glGenBuffers(2, vboHandles, 0);
         vboId = vboHandles[0];
+        txoId = vboHandles[1];
+        position.getNetPosition();
     }
     @Override
     public void onDrawFrame(GL10 gl) {
-        GLES32.glClear(GLES32.GL_COLOR_BUFFER_BIT | GLES32.GL_DEPTH_BUFFER_BIT);
-
+        GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT | GLES20.GL_DEPTH_BUFFER_BIT);
         Matrix.setIdentityM(mModelMatrix, 0);
         Matrix.translateM(mModelMatrix, 0, offsetX, offsetY, 0.0f);
         float[] mvpMatrix = new float[16];
         Matrix.multiplyMM(mvpMatrix, 0, mProjectionMatrix, 0, mModelMatrix, 0);
-        GLES32.glUniformMatrix4fv(mvpMatrixHandle, 1, false, mvpMatrix, 0);
-
-        GLES32.glActiveTexture(GLES32.GL_TEXTURE0);
-
-        GLES32.glBindBuffer(GLES32.GL_ARRAY_BUFFER, vboId);
-        GLES32.glVertexAttribPointer(positionHandle, 3, GLES32.GL_FLOAT, false, 5*4, 0);
-        GLES32.glVertexAttribPointer(textCoordHandle, 2, GLES32.GL_FLOAT, false, 5*4, 3*4);
-        GLES32.glEnableVertexAttribArray(positionHandle);
-        GLES32.glEnableVertexAttribArray(textCoordHandle);
-
-        GLES32.glDrawArrays(GLES32.GL_TRIANGLE_STRIP, 0, vertexBuffer.capacity() / 3);
-        GLES32.glBufferData(GLES32.GL_ARRAY_BUFFER, (vertexBuffer.capacity() + texCoordBuffer.capacity()) * 4, null, GLES32.GL_STATIC_DRAW);
-
+        GLES20.glUniformMatrix4fv(mvpMatrixHandle, 1, false, mvpMatrix, 0);
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
+        GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, vboId);
+        GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER, vertexBuffer.capacity() * 4, vertexBuffer, GLES20.GL_STATIC_DRAW);
+        GLES20.glVertexAttribPointer(positionHandle, 3, GLES20.GL_FLOAT, false, 3*4, 0);
+        GLES20.glEnableVertexAttribArray(positionHandle);
+        GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, txoId);
+        GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER, texCoordBuffer.capacity() * 4, texCoordBuffer, GLES20.GL_STATIC_DRAW);
+        GLES20.glVertexAttribPointer(textCoordHandle, 2, GLES20.GL_FLOAT, false, 2*4, 0);
+        GLES20.glEnableVertexAttribArray(textCoordHandle);
         drawTileGrid();
-        GLES32.glBindBuffer(GLES32.GL_ARRAY_BUFFER, 0);
-        Log.e("OpenGL", "VBO ID: " + vboId);
-        Log.e("OpenGL", "VertexBuffer Capacity: " + vertexBuffer.capacity());
-        Log.e("OpenGL", "Position Handle: " + positionHandle);
+        GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0);
     }
-
     @Override
     public void onSurfaceChanged(GL10 gl, int width, int height) {
-        GLES32.glViewport(0, 0, width, height);
-        float ratio = (float) width / height;
-        Matrix.orthoM(mProjectionMatrix, 0, -ratio, ratio, -1, 1, -1, 1);
+        GLES20.glViewport(0, 0, width, height);
+
+        float aspectRatio = (float) width / height;
+
+        // ✅ Zajistíme, že viewport přesně odpovídá dlaždicím
+        float worldWidth = tilesX * TILE_SIZE;
+        float worldHeight = tilesY * TILE_SIZE;
+
+        if (width > height) {
+            // Širší obrazovka → výška se přizpůsobí
+            Matrix.orthoM(mProjectionMatrix, 0, -worldWidth / 2, worldWidth / 2,
+                    -worldWidth / (2 * aspectRatio), worldWidth / (2 * aspectRatio), -1, 1);
+        } else {
+            // Vyšší obrazovka → šířka se přizpůsobí
+            Matrix.orthoM(mProjectionMatrix, 0, -worldHeight * aspectRatio / 2, worldHeight * aspectRatio / 2,
+                    -worldHeight / 2, worldHeight / 2, -1, 1);
+        }
     }
+
     private void drawTileGrid() {
         for (int x = -3; x < tilesX - 1; x++) {
-            for (int y = -4; y < tilesY - 1; y++) {
+            for (int y = -3; y < tilesY - 1; y++) {
                 drawTile(x, y);
             }
         }
     }
     private void drawTile(int x, int y) {
-        int tileX = (int) (x - offsetX / TILE_SIZE) + position.x;
-        int tileY = (int) (y - offsetY / TILE_SIZE) + position.y;
+        int tileX = x + position.x;
+        int tileY = y + position.y;
         int zoom = position.z;
 
         String key = zoom + "_" + tileX + "_" + tileY;
@@ -125,19 +131,30 @@ public class MapRenderer implements GLSurfaceView.Renderer {
                 return;
             }
         }
-        GLES32.glBindTexture(GLES32.GL_TEXTURE_2D, textureId);
-        GLES32.glDrawElements(GLES32.GL_TRIANGLES, 6, GLES32.GL_UNSIGNED_SHORT, indexBuffer);
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, textureId);
+
+        Matrix.setIdentityM(mModelMatrix, 0);
+        Matrix.translateM(mModelMatrix, 0, x * TILE_SIZE, -y * TILE_SIZE, 0.0f);
+        Matrix.scaleM(mModelMatrix, 0, TILE_SIZE, TILE_SIZE, 1);
+
+        float[] mvpMatrix = new float[16];
+        Matrix.multiplyMM(mvpMatrix, 0, mProjectionMatrix, 0, mModelMatrix, 0);
+        GLES20.glUniformMatrix4fv(mvpMatrixHandle, 1, false, mvpMatrix, 0);
+
+        GLES20.glDrawElements(GLES20.GL_TRIANGLES, 6, GLES20.GL_UNSIGNED_SHORT, indexBuffer);
     }
     private int loadTexture(Bitmap bitmap) {
         final int[] textureHandle = new int[1];
-        GLES32.glGenTextures(1, textureHandle, 0);
+        GLES20.glGenTextures(1, textureHandle, 0);
+        if (textureHandle[0] == 0) {
+            throw new RuntimeException("Nepodařilo se vytvořit texturu!");
+        }
 
         if (textureHandle[0] != 0) {
-            GLES32.glBindTexture(GLES32.GL_TEXTURE_2D, textureHandle[0]);
-            GLES32.glUniform1i(textureHandle[0], 0);
-            GLES32.glTexParameteri(GLES32.GL_TEXTURE_2D, GLES32.GL_TEXTURE_MIN_FILTER, GLES32.GL_LINEAR);
-            GLES32.glTexParameteri(GLES32.GL_TEXTURE_2D, GLES32.GL_TEXTURE_MAG_FILTER, GLES32.GL_LINEAR);
-            GLUtils.texImage2D(GLES32.GL_TEXTURE_2D, 0, bitmap, 0);
+            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, textureHandle[0]);
+            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR);
+            GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR);
+            GLUtils.texImage2D(GLES20.GL_TEXTURE_2D, 0, bitmap, 0);
             bitmap.recycle();
         } else {
             throw new RuntimeException("Nepodařilo se vytvořit texturu.");
@@ -182,12 +199,12 @@ public class MapRenderer implements GLSurfaceView.Renderer {
     }
     private int createShaderProgram() {
         String vertexShaderCode =
-                "attribute vec4 a_Position;" +
+                "attribute vec3 a_Position;" +
                         "attribute vec2 a_TexCoord;" +
                         "varying vec2 v_TexCoord;" +
                         "uniform mat4 u_MVPMatrix;" +
                         "void main() {" +
-                        "  gl_Position = u_MVPMatrix * a_Position;" +
+                        "  gl_Position = u_MVPMatrix * vec4(a_Position, 1.0);" +
                         "  v_TexCoord = a_TexCoord;" +
                         "}";
 
@@ -199,9 +216,20 @@ public class MapRenderer implements GLSurfaceView.Renderer {
                         "  gl_FragColor = texture2D(u_Texture, v_TexCoord);" +
                         "}";
 
-        int vertexShader = ShaderHelper.loadShader(GLES32.GL_VERTEX_SHADER, vertexShaderCode);
-        int fragmentShader = ShaderHelper.loadShader(GLES32.GL_FRAGMENT_SHADER, fragmentShaderCode);
-        return ShaderHelper.createProgram(vertexShader, fragmentShader);
+        int vertexShader = GLES20.glCreateShader(GLES20.GL_VERTEX_SHADER);
+        GLES20.glShaderSource(vertexShader, vertexShaderCode);
+        GLES20.glCompileShader(vertexShader);
+
+        int fragmentShader = GLES20.glCreateShader(GLES20.GL_FRAGMENT_SHADER);
+        GLES20.glShaderSource(fragmentShader, fragmentShaderCode);
+        GLES20.glCompileShader(fragmentShader);
+
+        int shaderProgram = GLES20.glCreateProgram(); //ShaderHelper.createProgram(vertexShader, fragmentShader);
+        GLES20.glAttachShader(shaderProgram, vertexShader);
+        GLES20.glAttachShader(shaderProgram, fragmentShader);
+        GLES20.glLinkProgram(shaderProgram);
+
+        return shaderProgram;
     }
     public void handleTouchMove(float deltaX, float deltaY) {
         offsetX += deltaX;

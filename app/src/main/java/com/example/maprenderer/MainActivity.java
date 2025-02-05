@@ -39,14 +39,11 @@ public class MainActivity extends AppCompatActivity {
         super.onPause();
         glSurfaceView.onPause();
     }
-
     @Override
     protected void onResume() {
         super.onResume();
         glSurfaceView.onResume();
     }
-
-    // Zpracování dotykového gesta pro plynulé posouvání mapy
     @Override
     public boolean onTouchEvent(MotionEvent event) {
         float deltaX;
