@@ -9,45 +9,51 @@ import android.opengl.Matrix;
 import android.util.Log;
 
 import com.example.maprenderer.util.Position;
-import com.example.maprenderer.util.ShaderHelper;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.nio.ShortBuffer;
 import java.util.HashMap;
+import java.util.Iterator;
+import java.util.LinkedList;
 import java.util.Map;
+import java.util.Queue;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import javax.microedition.khronos.egl.EGLConfig;
 import javax.microedition.khronos.opengles.GL10;
 
 public class MapRenderer implements GLSurfaceView.Renderer {
     private static final int TILE_SIZE = 256;
-    private Position position;
-    private Context context;
+    private final Position position;
+    private final Context context;
     private final TileLoader tileLoader;
+    private GLSurfaceView glSurfaceView;
     private float offsetX = 0.0f;
     private float offsetY = 0.0f;
     private final float[] mProjectionMatrix = new float[16];
     private final float[] mModelMatrix = new float[16];
     private ShortBuffer indexBuffer;
-    private int tilesX = 4, tilesY = 4;
+    private final int tilesX = 4;
+    private final int tilesY = 4;
     private int shaderProgram;
     FloatBuffer vertexBuffer, texCoordBuffer;
     private int positionHandle, textCoordHandle, mvpMatrixHandle;
     private final Map<String, Integer> tileTextures = new HashMap<>();
     private int vboId, txoId;
-    private int surfaceWidth, surfaceHeight;
-    private static final float SMOOTHING_FACTOR = 0.15f;
-    private static final float MAX_OFFSET = TILE_SIZE * 1.5f;
-
+    private static final float SMOOTHING_FACTOR = 0.85f;
+    private int lastBoundTexture;
     private long lastTime = System.nanoTime();
     private int frameCount = 0;
-    public MapRenderer(Context context) {
+    private final Queue<String> tileLoadQueue = new LinkedList<>();
+    private final ExecutorService tileLoaderExecutor = Executors.newFixedThreadPool(4);
+    public MapRenderer(Context context, GLSurfaceView glSurfaceView) {
         this.tileLoader = new TileLoader(context);
         this.position = new Position(context);
         this.context = context;
-
+        this.glSurfaceView = glSurfaceView;
     }
     @Override
     public void onSurfaceCreated(GL10 gl, EGLConfig config) {
@@ -73,6 +79,8 @@ public class MapRenderer implements GLSurfaceView.Renderer {
     @Override
     public void onDrawFrame(GL10 gl) {
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT | GLES20.GL_DEPTH_BUFFER_BIT);
+        processTileQueue();
+        cleanupOldTextures();
         Matrix.setIdentityM(mModelMatrix, 0);
         Matrix.translateM(mModelMatrix, 0, offsetX, offsetY, 0.0f);
         float[] mvpMatrix = new float[16];
@@ -91,9 +99,11 @@ public class MapRenderer implements GLSurfaceView.Renderer {
         GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0);
         long currentTime = System.nanoTime();
         frameCount++;
-
         if (currentTime - lastTime >= 1_000_000_000) { // 1 sekunda uplynula
-            Log.e("FPS", "FPS: " + frameCount);
+            Log.e("DEBUG", "FPS: " + frameCount);
+            Log.e("DEBUG", "Tile cache size: " + tileTextures.size());
+            Log.e("DEBUG", "OffsetX: " + offsetX + ", OffsetY: " + offsetY);
+            Log.e("DEBUG", "Position X: " + position.x + ", Position Y: " + position.y);
             frameCount = 0;
             lastTime = currentTime;
         }
@@ -101,8 +111,6 @@ public class MapRenderer implements GLSurfaceView.Renderer {
     @Override
     public void onSurfaceChanged(GL10 gl, int width, int height) {
         GLES20.glViewport(0, 0, width, height);
-        this.surfaceHeight = height;
-        this.surfaceWidth = width;
         float aspectRatio = (float) width / height;
         float worldWidth = tilesX * TILE_SIZE;
         float worldHeight = tilesY * TILE_SIZE;
@@ -115,11 +123,14 @@ public class MapRenderer implements GLSurfaceView.Renderer {
         }
     }
     private void drawTileGrid() {
-        for (int x = -4; x < tilesX + 4; x++) {
-            for (int y = -4; y < tilesY + 4; y++) {
+        for (int x = -tilesX; x < tilesX; x++) {
+            for (int y = -tilesY; y < tilesY; y++) {
                 int tileX = position.x + x - (int) Math.floor(offsetX / TILE_SIZE);
                 int tileY = position.y + y - (int) Math.floor(offsetY / TILE_SIZE);
-                preloadTileTexture(position.z, tileX, tileY);
+                String key = position.z + "_" + tileX + "_" + tileY;
+                if (!tileTextures.containsKey(key) && !tileLoadQueue.contains(key)) {
+                    tileLoadQueue.add(key);
+                }
                 drawTile(x, y);
             }
         }
@@ -131,7 +142,10 @@ public class MapRenderer implements GLSurfaceView.Renderer {
         String key = zoom + "_" + tileX + "_" + tileY;
         int textureId = tileTextures.getOrDefault(key, -1);
         if (textureId == -1) { return; }
-        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, textureId);
+        if (textureId != lastBoundTexture) {
+            GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, textureId);
+            lastBoundTexture = textureId;
+        }
         float tileScreenX = (x * TILE_SIZE) - offsetX;
         float tileScreenY = (-y * TILE_SIZE) + offsetY;
         float[] tileModelMatrix = new float[16];
@@ -143,14 +157,24 @@ public class MapRenderer implements GLSurfaceView.Renderer {
         GLES20.glUniformMatrix4fv(mvpMatrixHandle, 1, false, mvpMatrix, 0);
         GLES20.glDrawElements(GLES20.GL_TRIANGLES, 6, GLES20.GL_UNSIGNED_SHORT, indexBuffer);
     }
-
-    private void preloadTileTexture(int zoom, int tileX, int tileY) {
-        String key = zoom + "_" + tileX + "_" + tileY;
-        if (tileTextures.containsKey(key)) return;
-        Bitmap tileBitmap = tileLoader.getTile(zoom, tileX, tileY);
-        if (tileBitmap != null) {
-            int textureId = loadTexture(tileBitmap);
-            tileTextures.put(key, textureId);
+    private void processTileQueue() {
+        if (!tileLoadQueue.isEmpty()) {
+            String key = tileLoadQueue.poll();
+            String[] parts = key.split("_");
+            int zoom = Integer.parseInt(parts[0]);
+            int tileX = Integer.parseInt(parts[1]);
+            int tileY = Integer.parseInt(parts[2]);
+            tileLoaderExecutor.execute(() -> {
+                Bitmap tileBitmap = tileLoader.getTile(zoom, tileX, tileY);
+                if (tileBitmap != null) {
+                    glSurfaceView.queueEvent(() -> {
+                        int textureId = loadTexture(tileBitmap);
+                        tileTextures.put(key, textureId);
+                    });
+                } else {
+                    Log.e("TileLoader", "❌ Nepodařilo se získat bitmapu dlaždice: " + key);
+                }
+            });
         }
     }
     private int loadTexture(Bitmap bitmap) {
@@ -163,9 +187,26 @@ public class MapRenderer implements GLSurfaceView.Renderer {
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, textureHandle[0]);
         GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MIN_FILTER, GLES20.GL_LINEAR);
         GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_MAG_FILTER, GLES20.GL_LINEAR);
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE);
+        GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE);
         GLUtils.texImage2D(GLES20.GL_TEXTURE_2D, 0, bitmap, 0);
         bitmap.recycle();
         return textureHandle[0];
+    }
+    private void cleanupOldTextures() {
+        Iterator<Map.Entry<String, Integer>> iterator = tileTextures.entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<String, Integer> entry = iterator.next();
+            String key = entry.getKey();
+            String[] parts = key.split("_");
+            int zoom = Integer.parseInt(parts[0]);
+            int tileX = Integer.parseInt(parts[1]);
+            int tileY = Integer.parseInt(parts[2]);
+            if (Math.abs(tileX - position.x) > tilesX + 2 || Math.abs(tileY - position.y) > tilesY + 2) {
+                GLES20.glDeleteTextures(1, new int[]{entry.getValue()}, 0);
+                iterator.remove();
+            }
+        }
     }
     private void generateBuffers() {
         float[] vertices = {
@@ -237,24 +278,53 @@ public class MapRenderer implements GLSurfaceView.Renderer {
         return shaderProgram;
     }
     public void handleTouchMove(float deltaX, float deltaY) {
-        offsetX -= lerp(offsetX, offsetX - deltaX * 2 * TILE_SIZE, SMOOTHING_FACTOR);
-        offsetY += lerp(offsetY, offsetY - deltaY * 2 * TILE_SIZE, SMOOTHING_FACTOR);
-        offsetX = Math.max(-MAX_OFFSET, Math.min(MAX_OFFSET, offsetX));
-        offsetY = Math.max(-MAX_OFFSET, Math.min(MAX_OFFSET, offsetY));
-
-        if (Math.abs(offsetX) >= TILE_SIZE) {
-            position.x += (int) Math.signum(offsetX);
-            offsetX -= Math.signum(offsetX) * TILE_SIZE;
+        float normalizedX = -deltaX / glSurfaceView.getWidth();
+        float normalizedY = -deltaY / glSurfaceView.getHeight();
+        offsetX = lerp(offsetX, offsetX + normalizedX * TILE_SIZE * 3, 0.8f);
+        offsetY = lerp(offsetY, offsetY + normalizedY * TILE_SIZE * 3, 0.8f);
+        if (offsetX > TILE_SIZE && offsetY > TILE_SIZE) {
+            position.x++;
+            position.y++;
+            offsetX -= TILE_SIZE;
+            offsetY -= TILE_SIZE;
         }
-        if (Math.abs(offsetY) >= TILE_SIZE) {
-            position.y += (int) Math.signum(offsetY);
-            offsetY -= Math.signum(offsetY) * TILE_SIZE;
+        if (offsetX > TILE_SIZE && offsetY < -TILE_SIZE) {
+            position.x++;
+            position.y--;
+            offsetX -= TILE_SIZE;
+            offsetY += TILE_SIZE;
         }
-
-        //Log.e("Touch", "✅ Posun: offsetX=" + offsetX + " offsetY=" + offsetY + " Position: x=" + position.x + " y=" + position.y);
+        if (offsetX < -TILE_SIZE && offsetY < -TILE_SIZE) {
+            position.x--;
+            position.y--;
+            offsetX += TILE_SIZE;
+            offsetY += TILE_SIZE;
+        }
+        if (offsetX < -TILE_SIZE && offsetY > TILE_SIZE) {
+            position.x--;
+            position.y++;
+            offsetX += TILE_SIZE;
+            offsetY -= TILE_SIZE;
+        }
+        if (offsetX > TILE_SIZE) {
+            position.x++;
+            offsetX -= TILE_SIZE;
+        }
+        if (offsetX < -TILE_SIZE) {
+            position.x--;
+            offsetX += TILE_SIZE;
+        }
+        if (offsetY > TILE_SIZE) {
+            position.y++;
+            offsetY -= TILE_SIZE;
+        }
+        if (offsetY < -TILE_SIZE) {
+            position.y--;
+            offsetY += TILE_SIZE;
+        }
+        //TODO: při změně znaménka offsetu se pozmění position
     }
-    private static float lerp(float start, float end, float alpha) {
+    private float lerp(float start, float end, float alpha) {
         return start + alpha * (end - start);
     }
-
 }

@@ -8,6 +8,7 @@ import android.net.ConnectivityManager;
 import android.net.NetworkCapabilities;
 import android.opengl.GLSurfaceView;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.MotionEvent;
 
 import androidx.annotation.NonNull;
@@ -29,13 +30,12 @@ public class MainActivity extends AppCompatActivity {
             initNetwork(this);
             glSurfaceView = new GLSurfaceView(this);
             glSurfaceView.setEGLContextClientVersion(2);
-            mapRenderer = new MapRenderer(this);
+            mapRenderer = new MapRenderer(this, glSurfaceView);
             glSurfaceView.setRenderer(mapRenderer);
             setContentView(glSurfaceView);
         });
 
     }
-
     @Override
     protected void onPause() {
         super.onPause();
@@ -50,25 +50,21 @@ public class MainActivity extends AppCompatActivity {
     public boolean onTouchEvent(MotionEvent event) {
         float deltaX;
         float deltaY;
-
+        float currentX = event.getX();
+        float currentY = event.getY();
         if (event.getAction() == MotionEvent.ACTION_MOVE) {
             if (event.getHistorySize() > 0) {
-                deltaX = event.getX() - event.getHistoricalX(0);
-                deltaY = event.getY() - event.getHistoricalY(0);
+                deltaX = currentX - event.getHistoricalX(event.getHistorySize() - 1);
+                deltaY = currentY - event.getHistoricalY(event.getHistorySize() - 1);
             } else {
-                // Pokud nejsou historická data, použij jen aktuální změnu
-                deltaX = event.getX() - lastTouchX;
-                deltaY = event.getY() - lastTouchY;
+                deltaX = currentX - lastTouchX;
+                deltaY = currentY - lastTouchY;
             }
-
-            // Předání změn do rendereru pro posunutí mapy
-            mapRenderer.handleTouchMove(deltaX / glSurfaceView.getWidth(), deltaY / glSurfaceView.getHeight());
+            Log.e("TouchEvent", "📍 deltaX=" + deltaX + ", deltaY=" + deltaY);
+            mapRenderer.handleTouchMove(deltaX, deltaY);
         }
-
-        // Uložení poslední pozice pro další snímek
-        lastTouchX = event.getX();
-        lastTouchY = event.getY();
-
+        lastTouchX = currentX;
+        lastTouchY = currentY;
         return true;
     }
     public void initNetwork(Context context) {
