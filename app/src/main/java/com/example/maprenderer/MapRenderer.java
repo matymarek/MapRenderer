@@ -7,6 +7,7 @@ import android.opengl.GLSurfaceView;
 import android.opengl.GLUtils;
 import android.opengl.Matrix;
 import android.util.Log;
+import android.view.ScaleGestureDetector;
 
 import com.example.maprenderer.util.Position;
 
@@ -27,8 +28,9 @@ import javax.microedition.khronos.opengles.GL10;
 
 public class MapRenderer implements GLSurfaceView.Renderer {
     private static final int TILE_SIZE = 256;
+    private static final int MIN_ZOOM = 4;
+    private static final int MAX_ZOOM = 20;
     private final Position position;
-    private final Context context;
     private final TileLoader tileLoader;
     private GLSurfaceView glSurfaceView;
     private float offsetX = 0.0f;
@@ -46,12 +48,15 @@ public class MapRenderer implements GLSurfaceView.Renderer {
     private int lastBoundTexture;
     private long lastTime = System.nanoTime();
     private int frameCount = 0;
+    boolean chngzoom;
+    int zoomlevel;
     private final Queue<String> tileLoadQueue = new LinkedList<>();
     private final ExecutorService tileLoaderExecutor = Executors.newFixedThreadPool(4);
+
+
     public MapRenderer(Context context, GLSurfaceView glSurfaceView) {
         this.tileLoader = new TileLoader(context);
         this.position = new Position(context);
-        this.context = context;
         this.glSurfaceView = glSurfaceView;
     }
     @Override
@@ -74,6 +79,7 @@ public class MapRenderer implements GLSurfaceView.Renderer {
         vboId = vboHandles[0];
         txoId = vboHandles[1];
         position.getNetPosition();
+        zoomlevel = position.z;
     }
     @Override
     public void onDrawFrame(GL10 gl) {
@@ -102,7 +108,7 @@ public class MapRenderer implements GLSurfaceView.Renderer {
             Log.e("DEBUG", "FPS: " + frameCount);
             Log.e("DEBUG", "Tile cache size: " + tileTextures.size());
             Log.e("DEBUG", "OffsetX: " + offsetX + ", OffsetY: " + offsetY);
-            Log.e("DEBUG", "Position X: " + position.x + ", Position Y: " + position.y);
+            Log.e("DEBUG", "Position X: " + position.x + ", Position Y: " + position.y + " , Position Z: " + position.z);
             frameCount = 0;
             lastTime = currentTime;
         }
@@ -131,6 +137,7 @@ public class MapRenderer implements GLSurfaceView.Renderer {
                     tileLoadQueue.add(key);
                 }
                 drawTile(x, y);
+                if (chngzoom) tileLoadQueue.clear();
             }
         }
     }
@@ -321,6 +328,16 @@ public class MapRenderer implements GLSurfaceView.Renderer {
             position.y--;
             offsetY += TILE_SIZE;
         }
+    }
+    public void handleTouchZoom(ScaleGestureDetector detector){
+        chngzoom = true;
+        float scaleFactor = detector.getScaleFactor();
+        int newZoom = position.z + (scaleFactor > 1.0 ? 1 : scaleFactor < 1.0 ? -1 : 0);
+        newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, newZoom));
+        offsetX = offsetX * (float) Math.pow(2, position.z - newZoom);
+        offsetY = offsetY * (float) Math.pow(2, position.z - newZoom);
+        position.changeZoom(newZoom);
+        chngzoom = false;
     }
     private float lerp(float start, float end, float alpha) {
         return start + alpha * (end - start);

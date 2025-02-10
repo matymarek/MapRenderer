@@ -1,4 +1,5 @@
 package com.example.maprenderer.util;
+
 import android.annotation.SuppressLint;
 import android.content.Context;
 import android.location.Location;
@@ -17,11 +18,12 @@ public class Position {
     private FusedLocationProviderClient mLocationClient;
     Context context;
     Runnable onPositionReadyCallback;
+
+
     public Position(Context context) {
         this.context = context;
         this.mLocationClient = LocationServices.getFusedLocationProviderClient(context);
     }
-
     @SuppressLint("MissingPermission")
     private void getCurrentLocation(Runnable callback) {
         onPositionReadyCallback = callback;
@@ -46,13 +48,13 @@ public class Position {
             }
         });
     }
-
     public void getNetPosition(){
         CountDownLatch latch = new CountDownLatch(1);
         getCurrentLocation(() -> {
             x = (int) Math.round((longitude + 180) / 360 * Math.pow(2, z));
             y = (int) Math.round((1 - Math.log(Math.tan(Math.toRadians(latitude)) +
                     1 / Math.cos(Math.toRadians(latitude))) / Math.PI) / 2 * Math.pow(2, z));
+            Log.e("Position", "🌍 Po výpočtu: X=" + x + ", Y=" + y + ", Zoom=" + z);
             latch.countDown();
         });
         try{
@@ -62,15 +64,15 @@ public class Position {
             Log.e("GPS", "Čekání na polohu bylo přerušeno", e);
         }
     }
-
-    //TODO: implementovat changeZoom
     public void changeZoom(int desiredZoom){
-        longitude = x / Math.pow(2, z) * 360.0 - 180.0;
-        latitude = Math.toDegrees(Math.atan(Math.sinh(Math.PI - 2.0 * Math.PI * y / Math.pow(2, z))));
+        double lon = x / Math.pow(2, z) * 360.0 - 180.0;
+        double lat = Math.toDegrees(Math.atan(Math.sinh(Math.PI - 2.0 * Math.PI * y / Math.pow(2, z))));
         z = desiredZoom;
-        getNetPosition();
+        x = (int) Math.round((lon + 180) / 360 * Math.pow(2, z));
+        y = (int) Math.round((1 - Math.log(Math.tan(Math.toRadians(lat)) +
+                1 / Math.cos(Math.toRadians(lat))) / Math.PI) / 2 * Math.pow(2, z));
+        Log.e("ChangeZoom", "🔄 Zoom změněn: " + z + " → " + desiredZoom);
     }
-
     private void noLocation(){
         AlertDialog.Builder builder = new AlertDialog.Builder(context);
         builder.setTitle("Chyba");

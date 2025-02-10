@@ -10,6 +10,7 @@ import android.opengl.GLSurfaceView;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.MotionEvent;
+import android.view.ScaleGestureDetector;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
@@ -22,6 +23,7 @@ public class MainActivity extends AppCompatActivity {
     float lastTouchX = 0;
     float lastTouchY = 0;
     Runnable onPermissionGrantedCallback;
+    private ScaleGestureDetector scaleGestureDetector;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -33,6 +35,15 @@ public class MainActivity extends AppCompatActivity {
             mapRenderer = new MapRenderer(this, glSurfaceView);
             glSurfaceView.setRenderer(mapRenderer);
             setContentView(glSurfaceView);
+            scaleGestureDetector = new ScaleGestureDetector(this, new ScaleGestureDetector.SimpleOnScaleGestureListener() {
+                @Override
+                public boolean onScale(ScaleGestureDetector detector) {
+                    Log.e("ZoomEvent", "🔍 Gesto detekováno!");
+                    Log.e("ZoomEvent", "🔍 Průměrná pozice prstů: X=" + detector.getFocusX() + ", Y=" + detector.getFocusY());
+                    mapRenderer.handleTouchZoom(detector);
+                    return true;
+                }
+            });
         });
 
     }
@@ -62,7 +73,8 @@ public class MainActivity extends AppCompatActivity {
             }
             mapRenderer.handleTouchMove(deltaX, deltaY);
         }
-        //if (event.getAction() == MotionEvent.ACTION_)
+        scaleGestureDetector.onTouchEvent(event);
+        Log.e("TouchEvent", "📱 Gesto předáno ScaleDetectoru: " + event.getAction());
         lastTouchX = currentX;
         lastTouchY = currentY;
         return true;
