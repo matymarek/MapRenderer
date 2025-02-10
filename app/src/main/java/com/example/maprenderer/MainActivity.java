@@ -60,9 +60,9 @@ public class MainActivity extends AppCompatActivity {
                 deltaX = currentX - lastTouchX;
                 deltaY = currentY - lastTouchY;
             }
-            Log.e("TouchEvent", "📍 deltaX=" + deltaX + ", deltaY=" + deltaY);
             mapRenderer.handleTouchMove(deltaX, deltaY);
         }
+        //if (event.getAction() == MotionEvent.ACTION_)
         lastTouchX = currentX;
         lastTouchY = currentY;
         return true;

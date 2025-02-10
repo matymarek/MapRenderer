@@ -43,7 +43,6 @@ public class MapRenderer implements GLSurfaceView.Renderer {
     private int positionHandle, textCoordHandle, mvpMatrixHandle;
     private final Map<String, Integer> tileTextures = new HashMap<>();
     private int vboId, txoId;
-    private static final float SMOOTHING_FACTOR = 0.85f;
     private int lastBoundTexture;
     private long lastTime = System.nanoTime();
     private int frameCount = 0;
@@ -99,7 +98,7 @@ public class MapRenderer implements GLSurfaceView.Renderer {
         GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0);
         long currentTime = System.nanoTime();
         frameCount++;
-        if (currentTime - lastTime >= 1_000_000_000) { // 1 sekunda uplynula
+        if (currentTime - lastTime >= 1_000_000_000) {
             Log.e("DEBUG", "FPS: " + frameCount);
             Log.e("DEBUG", "Tile cache size: " + tileTextures.size());
             Log.e("DEBUG", "OffsetX: " + offsetX + ", OffsetY: " + offsetY);
@@ -125,8 +124,8 @@ public class MapRenderer implements GLSurfaceView.Renderer {
     private void drawTileGrid() {
         for (int x = -tilesX; x < tilesX; x++) {
             for (int y = -tilesY; y < tilesY; y++) {
-                int tileX = position.x + x - (int) Math.floor(offsetX / TILE_SIZE);
-                int tileY = position.y + y - (int) Math.floor(offsetY / TILE_SIZE);
+                int tileX = position.x + x;
+                int tileY = position.y + y;
                 String key = position.z + "_" + tileX + "_" + tileY;
                 if (!tileTextures.containsKey(key) && !tileLoadQueue.contains(key)) {
                     tileLoadQueue.add(key);
@@ -136,8 +135,8 @@ public class MapRenderer implements GLSurfaceView.Renderer {
         }
     }
     private void drawTile(int x, int y) {
-        int tileX = position.x + x - (int) Math.floor(offsetX / TILE_SIZE);
-        int tileY = position.y + y - (int) Math.floor(offsetY / TILE_SIZE);
+        int tileX = position.x + x;
+        int tileY = position.y + y;
         int zoom = position.z;
         String key = zoom + "_" + tileX + "_" + tileY;
         int textureId = tileTextures.getOrDefault(key, -1);
@@ -280,8 +279,8 @@ public class MapRenderer implements GLSurfaceView.Renderer {
     public void handleTouchMove(float deltaX, float deltaY) {
         float normalizedX = -deltaX / glSurfaceView.getWidth();
         float normalizedY = -deltaY / glSurfaceView.getHeight();
-        offsetX = lerp(offsetX, offsetX + normalizedX * TILE_SIZE * 3, 0.8f);
-        offsetY = lerp(offsetY, offsetY + normalizedY * TILE_SIZE * 3, 0.8f);
+        offsetX = lerp(offsetX, offsetX + normalizedX * TILE_SIZE * 5, 0.8f);
+        offsetY = lerp(offsetY, offsetY + normalizedY * TILE_SIZE * 5, 0.8f);
         if (offsetX > TILE_SIZE && offsetY > TILE_SIZE) {
             position.x++;
             position.y++;
@@ -322,7 +321,6 @@ public class MapRenderer implements GLSurfaceView.Renderer {
             position.y--;
             offsetY += TILE_SIZE;
         }
-        //TODO: při změně znaménka offsetu se pozmění position
     }
     private float lerp(float start, float end, float alpha) {
         return start + alpha * (end - start);

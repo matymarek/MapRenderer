@@ -63,6 +63,7 @@ public class Position {
         }
     }
 
+    //TODO: implementovat changeZoom
     public void changeZoom(int desiredZoom){
         longitude = x / Math.pow(2, z) * 360.0 - 180.0;
         latitude = Math.toDegrees(Math.atan(Math.sinh(Math.PI - 2.0 * Math.PI * y / Math.pow(2, z))));
