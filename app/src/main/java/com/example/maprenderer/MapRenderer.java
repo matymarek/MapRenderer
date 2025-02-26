@@ -50,8 +50,9 @@ public class MapRenderer implements GLSurfaceView.Renderer {
     private int frameCount = 0;
     boolean chngzoom;
     int zoomlevel;
+    private long lastZoomTime = 0;
     private final Queue<String> tileLoadQueue = new LinkedList<>();
-    private final ExecutorService tileLoaderExecutor = Executors.newFixedThreadPool(4);
+    private final ExecutorService tileLoaderExecutor = Executors.newFixedThreadPool(6);
 
 
     public MapRenderer(Context context, GLSurfaceView glSurfaceView) {
@@ -170,6 +171,7 @@ public class MapRenderer implements GLSurfaceView.Renderer {
             int zoom = Integer.parseInt(parts[0]);
             int tileX = Integer.parseInt(parts[1]);
             int tileY = Integer.parseInt(parts[2]);
+            if(tileX < 0 || tileY < 0 || tileX > Math.pow(2, zoom) || tileY > Math.pow(2, zoom)) return;
             tileLoaderExecutor.execute(() -> {
                 Bitmap tileBitmap = tileLoader.getTile(zoom, tileX, tileY);
                 if (tileBitmap != null) {
@@ -286,8 +288,8 @@ public class MapRenderer implements GLSurfaceView.Renderer {
     public void handleTouchMove(float deltaX, float deltaY) {
         float normalizedX = -deltaX / glSurfaceView.getWidth();
         float normalizedY = -deltaY / glSurfaceView.getHeight();
-        offsetX = lerp(offsetX, offsetX + normalizedX * TILE_SIZE * 5, 0.8f);
-        offsetY = lerp(offsetY, offsetY + normalizedY * TILE_SIZE * 5, 0.8f);
+        offsetX = lerp(offsetX, offsetX + normalizedX * TILE_SIZE * 10, 0.8f);
+        offsetY = lerp(offsetY, offsetY + normalizedY * TILE_SIZE * 10, 0.8f);
         if (offsetX > TILE_SIZE && offsetY > TILE_SIZE) {
             position.x++;
             position.y++;
@@ -332,11 +334,20 @@ public class MapRenderer implements GLSurfaceView.Renderer {
     public void handleTouchZoom(ScaleGestureDetector detector){
         chngzoom = true;
         float scaleFactor = detector.getScaleFactor();
+        Log.e("scalefactor", "ScaleFactor: " + scaleFactor);
         int newZoom = position.z + (scaleFactor > 1.0 ? 1 : scaleFactor < 1.0 ? -1 : 0);
         newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, newZoom));
-        offsetX = offsetX * (float) Math.pow(2, position.z - newZoom);
-        offsetY = offsetY * (float) Math.pow(2, position.z - newZoom);
-        position.changeZoom(newZoom);
+        //offsetX = offsetX * (float) Math.pow(2, position.z - newZoom);
+        //offsetY = offsetY * (float) Math.pow(2, position.z - newZoom);
+        offsetX = 0;
+        offsetY = 0;
+        long currentTime = System.currentTimeMillis();
+        if (currentTime - lastZoomTime > 300) {
+            if (newZoom != position.z) {
+                position.changeZoom(newZoom);
+                lastZoomTime = currentTime;
+            }
+        }
         chngzoom = false;
     }
     private float lerp(float start, float end, float alpha) {

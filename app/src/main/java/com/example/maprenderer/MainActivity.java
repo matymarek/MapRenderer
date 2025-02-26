@@ -59,6 +59,7 @@ public class MainActivity extends AppCompatActivity {
     }
     @Override
     public boolean onTouchEvent(MotionEvent event) {
+        scaleGestureDetector.onTouchEvent(event);
         float deltaX;
         float deltaY;
         float currentX = event.getX();
@@ -73,7 +74,6 @@ public class MainActivity extends AppCompatActivity {
             }
             mapRenderer.handleTouchMove(deltaX, deltaY);
         }
-        scaleGestureDetector.onTouchEvent(event);
         Log.e("TouchEvent", "📱 Gesto předáno ScaleDetectoru: " + event.getAction());
         lastTouchX = currentX;
         lastTouchY = currentY;
