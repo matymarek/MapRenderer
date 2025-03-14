@@ -48,8 +48,6 @@ public class MapRenderer implements GLSurfaceView.Renderer {
     private int lastBoundTexture;
     private long lastTime = System.nanoTime();
     private int frameCount = 0;
-    boolean chngzoom;
-    int zoomlevel;
     private long lastZoomTime = 0;
     private final Queue<String> tileLoadQueue = new LinkedList<>();
     private final ExecutorService tileLoaderExecutor = Executors.newFixedThreadPool(6);
@@ -80,7 +78,6 @@ public class MapRenderer implements GLSurfaceView.Renderer {
         vboId = vboHandles[0];
         txoId = vboHandles[1];
         position.getNetPosition();
-        zoomlevel = position.z;
     }
     @Override
     public void onDrawFrame(GL10 gl) {
@@ -138,7 +135,6 @@ public class MapRenderer implements GLSurfaceView.Renderer {
                     tileLoadQueue.add(key);
                 }
                 drawTile(x, y);
-                if (chngzoom) tileLoadQueue.clear();
             }
         }
     }
@@ -288,8 +284,8 @@ public class MapRenderer implements GLSurfaceView.Renderer {
     public void handleTouchMove(float deltaX, float deltaY) {
         float normalizedX = -deltaX / glSurfaceView.getWidth();
         float normalizedY = -deltaY / glSurfaceView.getHeight();
-        offsetX = lerp(offsetX, offsetX + normalizedX * TILE_SIZE * 10, 0.8f);
-        offsetY = lerp(offsetY, offsetY + normalizedY * TILE_SIZE * 10, 0.8f);
+        offsetX = lerp(offsetX, offsetX + normalizedX * TILE_SIZE * 15, 0.8f);
+        offsetY = lerp(offsetY, offsetY + normalizedY * TILE_SIZE * 15, 0.8f);
         if (offsetX > TILE_SIZE && offsetY > TILE_SIZE) {
             position.x++;
             position.y++;
@@ -332,15 +328,14 @@ public class MapRenderer implements GLSurfaceView.Renderer {
         }
     }
     public void handleTouchZoom(ScaleGestureDetector detector){
-        chngzoom = true;
         float scaleFactor = detector.getScaleFactor();
         Log.e("scalefactor", "ScaleFactor: " + scaleFactor);
         int newZoom = position.z + (scaleFactor > 1.0 ? 1 : scaleFactor < 1.0 ? -1 : 0);
         newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, newZoom));
-        //offsetX = offsetX * (float) Math.pow(2, position.z - newZoom);
-        //offsetY = offsetY * (float) Math.pow(2, position.z - newZoom);
-        offsetX = 0;
-        offsetY = 0;
+        offsetX = offsetX * (float) Math.pow(2, newZoom - position.z);
+        offsetY = offsetY * (float) Math.pow(2, newZoom - position.z);
+        //offsetX = 0;
+        //offsetY = 0;
         long currentTime = System.currentTimeMillis();
         if (currentTime - lastZoomTime > 300) {
             if (newZoom != position.z) {
@@ -348,7 +343,6 @@ public class MapRenderer implements GLSurfaceView.Renderer {
                 lastZoomTime = currentTime;
             }
         }
-        chngzoom = false;
     }
     private float lerp(float start, float end, float alpha) {
         return start + alpha * (end - start);

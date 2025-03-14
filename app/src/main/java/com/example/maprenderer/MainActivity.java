@@ -74,7 +74,6 @@ public class MainActivity extends AppCompatActivity {
             }
             mapRenderer.handleTouchMove(deltaX, deltaY);
         }
-        Log.e("TouchEvent", "📱 Gesto předáno ScaleDetectoru: " + event.getAction());
         lastTouchX = currentX;
         lastTouchY = currentY;
         return true;
