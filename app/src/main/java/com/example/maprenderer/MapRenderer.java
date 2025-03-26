@@ -327,22 +327,24 @@ public class MapRenderer implements GLSurfaceView.Renderer {
             offsetY += TILE_SIZE;
         }
     }
-    public void handleTouchZoom(ScaleGestureDetector detector){
+    public boolean handleTouchZoom(ScaleGestureDetector detector){
         float scaleFactor = detector.getScaleFactor();
         Log.e("scalefactor", "ScaleFactor: " + scaleFactor);
         int newZoom = position.z + (scaleFactor > 1.0 ? 1 : scaleFactor < 1.0 ? -1 : 0);
         newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, newZoom));
-        offsetX = offsetX * (float) Math.pow(2, newZoom - position.z);
-        offsetY = offsetY * (float) Math.pow(2, newZoom - position.z);
-        //offsetX = 0;
-        //offsetY = 0;
+        //offsetX = offsetX * (float) Math.pow(2, newZoom - position.z);
+        //offsetY = offsetY * (float) Math.pow(2, newZoom - position.z);
+        offsetX = 0;
+        offsetY = 0;
         long currentTime = System.currentTimeMillis();
         if (currentTime - lastZoomTime > 300) {
             if (newZoom != position.z) {
                 position.changeZoom(newZoom);
                 lastZoomTime = currentTime;
+                return true;
             }
         }
+        return false;
     }
     private float lerp(float start, float end, float alpha) {
         return start + alpha * (end - start);

@@ -20,6 +20,7 @@ public class MainActivity extends AppCompatActivity {
     private MapRenderer mapRenderer;
     boolean network;
     double netSpeed;
+    boolean zoomchanged;
     float lastTouchX = 0;
     float lastTouchY = 0;
     Runnable onPermissionGrantedCallback;
@@ -40,7 +41,7 @@ public class MainActivity extends AppCompatActivity {
                 public boolean onScale(ScaleGestureDetector detector) {
                     Log.e("ZoomEvent", "🔍 Gesto detekováno!");
                     Log.e("ZoomEvent", "🔍 Průměrná pozice prstů: X=" + detector.getFocusX() + ", Y=" + detector.getFocusY());
-                    mapRenderer.handleTouchZoom(detector);
+                    zoomchanged = mapRenderer.handleTouchZoom(detector);
                     return true;
                 }
             });
@@ -60,6 +61,7 @@ public class MainActivity extends AppCompatActivity {
     @Override
     public boolean onTouchEvent(MotionEvent event) {
         scaleGestureDetector.onTouchEvent(event);
+        if(zoomchanged) return true;
         float deltaX;
         float deltaY;
         float currentX = event.getX();
