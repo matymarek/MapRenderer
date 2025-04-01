@@ -52,7 +52,6 @@ public class MapRenderer implements GLSurfaceView.Renderer {
     private final Queue<String> tileLoadQueue = new LinkedList<>();
     private final ExecutorService tileLoaderExecutor = Executors.newFixedThreadPool(6);
 
-
     public MapRenderer(Context context, GLSurfaceView glSurfaceView) {
         this.tileLoader = new TileLoader(context);
         this.position = new Position(context);
@@ -286,30 +285,6 @@ public class MapRenderer implements GLSurfaceView.Renderer {
         float normalizedY = -deltaY / glSurfaceView.getHeight();
         offsetX = lerp(offsetX, offsetX + normalizedX * TILE_SIZE * 15, 0.8f);
         offsetY = lerp(offsetY, offsetY + normalizedY * TILE_SIZE * 15, 0.8f);
-        if (offsetX > TILE_SIZE && offsetY > TILE_SIZE) {
-            position.x++;
-            position.y++;
-            offsetX -= TILE_SIZE;
-            offsetY -= TILE_SIZE;
-        }
-        if (offsetX > TILE_SIZE && offsetY < -TILE_SIZE) {
-            position.x++;
-            position.y--;
-            offsetX -= TILE_SIZE;
-            offsetY += TILE_SIZE;
-        }
-        if (offsetX < -TILE_SIZE && offsetY < -TILE_SIZE) {
-            position.x--;
-            position.y--;
-            offsetX += TILE_SIZE;
-            offsetY += TILE_SIZE;
-        }
-        if (offsetX < -TILE_SIZE && offsetY > TILE_SIZE) {
-            position.x--;
-            position.y++;
-            offsetX += TILE_SIZE;
-            offsetY -= TILE_SIZE;
-        }
         if (offsetX > TILE_SIZE) {
             position.x++;
             offsetX -= TILE_SIZE;
@@ -330,10 +305,9 @@ public class MapRenderer implements GLSurfaceView.Renderer {
     public boolean handleTouchZoom(ScaleGestureDetector detector){
         float scaleFactor = detector.getScaleFactor();
         Log.e("scalefactor", "ScaleFactor: " + scaleFactor);
-        int newZoom = position.z + (scaleFactor > 1.0 ? 1 : scaleFactor < 1.0 ? -1 : 0);
+        int newZoom = position.z +
+                (scaleFactor > 1.0 ? 1 : scaleFactor < 1.0 ? -1 : 0);
         newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, newZoom));
-        //offsetX = offsetX * (float) Math.pow(2, newZoom - position.z);
-        //offsetY = offsetY * (float) Math.pow(2, newZoom - position.z);
         offsetX = 0;
         offsetY = 0;
         long currentTime = System.currentTimeMillis();
